@@ -106,28 +106,47 @@ void CCamera::RegenerateViewMatrix()
 	m_xmf4x4View._43 = -Vector3::DotProduct(m_xmf3Position, m_xmf3Look);
 }
 
-void CCamera::CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList)
-{
-	UINT ncbElementBytes = ((sizeof(VS_CB_CAMERA_INFO) + 255) & ~255); //256의 배수
-	m_pd3dcbCamera = ::CreateBufferResource(pd3dDevice, pd3dCommandList, NULL, ncbElementBytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, NULL);
+//void CCamera::CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList)
+//{
+//	UINT ncbElementBytes = ((sizeof(VS_CB_CAMERA_INFO) + 255) & ~255); //256의 배수
+//	m_pd3dcbCamera = ::CreateBufferResource(pd3dDevice, pd3dCommandList, NULL, ncbElementBytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, NULL);
+//
+//	m_pd3dcbCamera->Map(0, NULL, (void **)&m_pcbMappedCamera);
+//}
 
-	m_pd3dcbCamera->Map(0, NULL, (void **)&m_pcbMappedCamera);
+void CCamera::CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12DescriptorHeap* pd3dCbvSrvDescriptorHeap, UINT nDescriptorOffset)
+{
+	UINT ncbElementBytes = ((sizeof(VS_CB_CAMERA_INFO) + 255) & ~255);
+	m_pd3dcbCamera = ::CreateBufferResource(pd3dDevice, pd3dCommandList, NULL, ncbElementBytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, NULL);
+	m_pd3dcbCamera->Map(0, NULL, (void**)&m_pcbMappedCamera);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE d3dCpuDescriptorHandle = pd3dCbvSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	d3dCpuDescriptorHandle.ptr += nDescriptorOffset;
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC d3dCbvDesc;
+	d3dCbvDesc.BufferLocation = m_pd3dcbCamera->GetGPUVirtualAddress();
+	d3dCbvDesc.SizeInBytes = ncbElementBytes;
+	pd3dDevice->CreateConstantBufferView(&d3dCbvDesc, d3dCpuDescriptorHandle);
+
+	m_d3dCbvGpuDescriptorHandle = pd3dCbvSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+	m_d3dCbvGpuDescriptorHandle.ptr += nDescriptorOffset;
 }
 
-void CCamera::UpdateShaderVariables(ID3D12GraphicsCommandList *pd3dCommandList)
+void CCamera::UpdateShaderVariables(ID3D12GraphicsCommandList* pd3dCommandList)
 {
-	XMFLOAT4X4 xmf4x4View;
-	XMStoreFloat4x4(&xmf4x4View, XMMatrixTranspose(XMLoadFloat4x4(&m_xmf4x4View)));
-	::memcpy(&m_pcbMappedCamera->m_xmf4x4View, &xmf4x4View, sizeof(XMFLOAT4X4));
+	if (m_pcbMappedCamera)
+	{
+		XMFLOAT4X4 xmf4x4View, xmf4x4Projection;
+		XMStoreFloat4x4(&xmf4x4View, XMMatrixTranspose(XMLoadFloat4x4(&m_xmf4x4View)));
+		XMStoreFloat4x4(&xmf4x4Projection, XMMatrixTranspose(XMLoadFloat4x4(&m_xmf4x4Projection)));
 
-	XMFLOAT4X4 xmf4x4Projection;
-	XMStoreFloat4x4(&xmf4x4Projection, XMMatrixTranspose(XMLoadFloat4x4(&m_xmf4x4Projection)));
-	::memcpy(&m_pcbMappedCamera->m_xmf4x4Projection, &xmf4x4Projection, sizeof(XMFLOAT4X4));
+		::memcpy(&m_pcbMappedCamera->m_xmf4x4View, &xmf4x4View, sizeof(XMFLOAT4X4));
+		::memcpy(&m_pcbMappedCamera->m_xmf4x4Projection, &xmf4x4Projection, sizeof(XMFLOAT4X4));
+		::memcpy(&m_pcbMappedCamera->m_xmf3Position, &m_xmf3Position, sizeof(XMFLOAT3));
+	}
 
-	::memcpy(&m_pcbMappedCamera->m_xmf3Position, &m_xmf3Position, sizeof(XMFLOAT3));
-
-	D3D12_GPU_VIRTUAL_ADDRESS d3dGpuVirtualAddress = m_pd3dcbCamera->GetGPUVirtualAddress();
-	pd3dCommandList->SetGraphicsRootConstantBufferView(0, d3dGpuVirtualAddress);
+	// 루트 파라미터 0번 슬롯에 카메라의 CBV가 포함된 디스크립터 테이블을 설정합니다.
+	pd3dCommandList->SetGraphicsRootDescriptorTable(0, m_d3dCbvGpuDescriptorHandle);
 }
 
 void CCamera::ReleaseShaderVariables()
@@ -136,6 +155,7 @@ void CCamera::ReleaseShaderVariables()
 	{
 		m_pd3dcbCamera->Unmap(0, NULL);
 		m_pd3dcbCamera->Release();
+		m_pd3dcbCamera = NULL;
 	}
 }
 

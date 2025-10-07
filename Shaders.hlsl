@@ -1,3 +1,21 @@
+cbuffer cbCameraInfo : register(b0)
+{
+    matrix gmtxView : packoffset(c0);
+    matrix gmtxProjection : packoffset(c4);
+    float3 gvCameraPosition : packoffset(c8);
+};
+
+cbuffer cbGameObjectInfo : register(b1)
+{
+    matrix gmtxWorld : packoffset(c0);
+};
+
+struct VS_INPUT
+{
+    float3 position : POSITION;
+    float3 normal : NORMAL;
+};
+//////////////////////////////////////////////////////////////////////////////
 struct MATERIAL
 {
 	float4					m_cAmbient;
@@ -17,6 +35,13 @@ cbuffer cbGameObjectInfo : register(b2)
 {
 	matrix					gmtxGameObject : packoffset(c0);
 	MATERIAL				gMaterial : packoffset(c4);
+};
+
+cbuffer cbLights : register(b2)
+{
+    Light gLights[16];
+    float4 gvGlobalAmbient;
+    int gnLights;
 };
 
 #include "Light.hlsl"

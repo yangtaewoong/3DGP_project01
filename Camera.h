@@ -43,13 +43,16 @@ protected:
 
 	ID3D12Resource					*m_pd3dcbCamera = NULL;
 	VS_CB_CAMERA_INFO				*m_pcbMappedCamera = NULL;
+	D3D12_GPU_DESCRIPTOR_HANDLE m_d3dCbvGpuDescriptorHandle;
+
 
 public:
 	CCamera();
 	CCamera(CCamera *pCamera);
 	virtual ~CCamera();
 
-	virtual void CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList);
+	//virtual void CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList);
+	virtual void CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12DescriptorHeap* pd3dCbvSrvDescriptorHeap, UINT nDescriptorOffset);		// Ãß°¡
 	virtual void ReleaseShaderVariables();
 	virtual void UpdateShaderVariables(ID3D12GraphicsCommandList *pd3dCommandList);
 

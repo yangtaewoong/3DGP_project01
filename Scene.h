@@ -46,8 +46,8 @@ public:
 	bool OnProcessingMouseMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam);
 	bool OnProcessingKeyboardMessage(HWND hWnd, UINT nMessageID, WPARAM wParam, LPARAM lParam);
 
-	virtual void CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList);
-	virtual void UpdateShaderVariables(ID3D12GraphicsCommandList *pd3dCommandList);
+	virtual void CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12DescriptorHeap* pd3dCbvSrvDescriptorHeap, UINT nDescriptorOffset);
+	virtual void UpdateShaderVariables(ID3D12GraphicsCommandList* pd3dCommandList);
 	virtual void ReleaseShaderVariables();
 
 	void BuildDefaultLightsAndMaterials();
@@ -78,6 +78,8 @@ public:
 
 	ID3D12Resource				*m_pd3dcbLights = NULL;
 	LIGHTS						*m_pcbMappedLights = NULL;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE m_d3dGpuCbvLightsDescriptorHandle;
 
 	float						m_fElapsedTime = 0.0f;
 };

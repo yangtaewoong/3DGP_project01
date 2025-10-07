@@ -159,11 +159,15 @@ CGameObject *CGameObject::FindFrame(char *pstrFrameName)
 	return(NULL);
 }
 
-void CGameObject::Render(ID3D12GraphicsCommandList *pd3dCommandList, CCamera *pCamera)
+void CGameObject::Render(ID3D12GraphicsCommandList* pd3dCommandList, CCamera* pCamera)
 {
 	OnPrepareRender();
 
-	UpdateShaderVariable(pd3dCommandList, &m_xmf4x4World);
+	// 데이터를 상수 버퍼에 업데이트
+	UpdateShaderVariables(pd3dCommandList);
+
+	// 루트 파라미터 1번 슬롯에 GameObject의 CBV가 포함된 디스크립터 테이블 설정
+	pd3dCommandList->SetGraphicsRootDescriptorTable(1, m_d3dCbvGpuDescriptorHandle);
 
 	if (m_nMaterials > 0)
 	{
@@ -186,19 +190,36 @@ void CGameObject::CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12Graphics
 {
 }
 
-void CGameObject::UpdateShaderVariables(ID3D12GraphicsCommandList *pd3dCommandList)
+void CGameObject::CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12DescriptorHeap* pd3dCbvSrvDescriptorHeap, UINT nDescriptorOffset)
 {
+	UINT ncbElementBytes = ((sizeof(VS_CB_GAME_OBJECT_INFO) + 255) & ~255);
+	m_pd3dcbGameObject = ::CreateBufferResource(pd3dDevice, pd3dCommandList, NULL, ncbElementBytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, NULL);
+
+	// 상수 버퍼를 매핑하여 m_pcbMappedGameObject 포인터를 얻습니다.
+	m_pd3dcbGameObject->Map(0, NULL, (void**)&m_pcbMappedGameObject);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE d3dCpuDescriptorHandle = pd3dCbvSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	d3dCpuDescriptorHandle.ptr += nDescriptorOffset;
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC d3dCbvDesc;
+	d3dCbvDesc.BufferLocation = m_pd3dcbGameObject->GetGPUVirtualAddress();
+	d3dCbvDesc.SizeInBytes = ncbElementBytes;
+	pd3dDevice->CreateConstantBufferView(&d3dCbvDesc, d3dCpuDescriptorHandle);
+
+	m_d3dCbvGpuDescriptorHandle = pd3dCbvSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+	m_d3dCbvGpuDescriptorHandle.ptr += nDescriptorOffset;
 }
 
-void CGameObject::UpdateShaderVariable(ID3D12GraphicsCommandList *pd3dCommandList, XMFLOAT4X4 *pxmf4x4World)
+void CGameObject::UpdateShaderVariables(ID3D12GraphicsCommandList* pd3dCommandList)
 {
-	XMFLOAT4X4 xmf4x4World;
-	XMStoreFloat4x4(&xmf4x4World, XMMatrixTranspose(XMLoadFloat4x4(pxmf4x4World)));
-	pd3dCommandList->SetGraphicsRoot32BitConstants(1, 16, &xmf4x4World, 0);
-}
+	if (m_pcbMappedGameObject)
+	{
+		XMFLOAT4X4 xmf4x4World;
+		XMStoreFloat4x4(&xmf4x4World, XMMatrixTranspose(XMLoadFloat4x4(&m_xmf4x4World)));
 
-void CGameObject::UpdateShaderVariable(ID3D12GraphicsCommandList *pd3dCommandList, CMaterial *pMaterial)
-{
+		// 맵핑된 포인터를 통해 상수 버퍼의 내용을 업데이트합니다.
+		::memcpy(&m_pcbMappedGameObject->m_xmf4x4World, &xmf4x4World, sizeof(XMFLOAT4X4));
+	}
 }
 
 void CGameObject::ReleaseShaderVariables()

@@ -39,9 +39,9 @@ CPlayer::~CPlayer()
 	if (m_pCamera) delete m_pCamera;
 }
 
-void CPlayer::CreateShaderVariables(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList)
+void CPlayer::CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12DescriptorHeap* pd3dCbvSrvDescriptorHeap, UINT nDescriptorOffset)
 {
-	if (m_pCamera) m_pCamera->CreateShaderVariables(pd3dDevice, pd3dCommandList);
+	CGameObject::CreateShaderVariables(pd3dDevice, pd3dCommandList, pd3dCbvSrvDescriptorHeap, nDescriptorOffset);
 }
 
 void CPlayer::UpdateShaderVariables(ID3D12GraphicsCommandList *pd3dCommandList)
@@ -247,8 +247,6 @@ CAirplanePlayer::CAirplanePlayer(ID3D12Device *pd3dDevice, ID3D12GraphicsCommand
 	SetChild(pGameObject, true);
 
 	OnInitialize();
-
-	CreateShaderVariables(pd3dDevice, pd3dCommandList);
 }
 
 CAirplanePlayer::~CAirplanePlayer()

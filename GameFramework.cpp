@@ -185,19 +185,33 @@ void CGameFramework::CreateCommandQueueAndList()
 
 void CGameFramework::CreateRtvAndDsvDescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC d3dDescriptorHeapDesc;
+	D3D12_DESCRIPTOR_HEAP_DESC d3dDescriptorHeapDesc; 
 	::ZeroMemory(&d3dDescriptorHeapDesc, sizeof(D3D12_DESCRIPTOR_HEAP_DESC));
+
+	// RTV 힙 생성
 	d3dDescriptorHeapDesc.NumDescriptors = m_nSwapChainBuffers;
 	d3dDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	d3dDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	d3dDescriptorHeapDesc.NodeMask = 0;
-	HRESULT hResult = m_pd3dDevice->CreateDescriptorHeap(&d3dDescriptorHeapDesc, __uuidof(ID3D12DescriptorHeap), (void **)&m_pd3dRtvDescriptorHeap);
+	HRESULT hResult = m_pd3dDevice->CreateDescriptorHeap(&d3dDescriptorHeapDesc, __uuidof(ID3D12DescriptorHeap), (void**)&m_pd3dRtvDescriptorHeap);
 	m_nRtvDescriptorIncrementSize = m_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
+	// DSV 힙 생성 (d3dDescriptorHeapDesc 변수 재활용)
 	d3dDescriptorHeapDesc.NumDescriptors = 1;
 	d3dDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	hResult = m_pd3dDevice->CreateDescriptorHeap(&d3dDescriptorHeapDesc, __uuidof(ID3D12DescriptorHeap), (void **)&m_pd3dDsvDescriptorHeap);
+	hResult = m_pd3dDevice->CreateDescriptorHeap(&d3dDescriptorHeapDesc, __uuidof(ID3D12DescriptorHeap), (void**)&m_pd3dDsvDescriptorHeap);
 	m_nDsvDescriptorIncrementSize = m_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
+	// CBV_SRV_UAV 힙 생성 (d3dDescriptorHeapDesc 변수 재활용)
+	// ::ZeroMemory를 다시 호출하여 구조체를 초기화해주는 것이 좋습니다.
+	::ZeroMemory(&d3dDescriptorHeapDesc, sizeof(D3D12_DESCRIPTOR_HEAP_DESC));
+	d3dDescriptorHeapDesc.NumDescriptors = 1024;
+	d3dDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	d3dDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	d3dDescriptorHeapDesc.NodeMask = 0;
+	hResult = m_pd3dDevice->CreateDescriptorHeap(&d3dDescriptorHeapDesc, __uuidof(ID3D12DescriptorHeap), (void**)&m_pd3dCbvSrvDescriptorHeap);
+
+	m_nCbvSrvDescriptorIncrementSize = m_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 void CGameFramework::CreateRenderTargetViews()
@@ -397,16 +411,43 @@ void CGameFramework::BuildObjects()
 {
 	m_pd3dCommandList->Reset(m_pd3dCommandAllocator, NULL);
 
-	m_pScene = new CScene();
-	if (m_pScene) m_pScene->BuildObjects(m_pd3dDevice, m_pd3dCommandList);
+	// CBV 디스크립터 힙 오프셋 관리를 위한 변수
+	UINT nCbvSrvDescriptorOffset = 0;
+	UINT nCbvSrvDescriptorIncrementSize = m_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	CAirplanePlayer *pAirplanePlayer = new CAirplanePlayer(m_pd3dDevice, m_pd3dCommandList, m_pScene->GetGraphicsRootSignature());
+	// Scene(Lights) CBV 생성
+	m_pScene = new CScene();
+	if (m_pScene)
+	{
+		m_pScene->CreateShaderVariables(m_pd3dDevice, m_pd3dCommandList, m_pd3dCbvSrvDescriptorHeap, nCbvSrvDescriptorOffset);
+		nCbvSrvDescriptorOffset += nCbvSrvDescriptorIncrementSize; // 오프셋 증가
+
+		// Scene의 BuildObjects는 내부에서 GameObject들을 생성하므로 CBV 생성 전에 호출합니다.
+		m_pScene->BuildObjects(m_pd3dDevice, m_pd3dCommandList);
+	}
+
+	// Player CBV 생성
+	CAirplanePlayer* pAirplanePlayer = new CAirplanePlayer(m_pd3dDevice, m_pd3dCommandList, m_pScene->GetGraphicsRootSignature());
+	pAirplanePlayer->CreateShaderVariables(m_pd3dDevice, m_pd3dCommandList, m_pd3dCbvSrvDescriptorHeap, nCbvSrvDescriptorOffset);
+	nCbvSrvDescriptorOffset += nCbvSrvDescriptorIncrementSize; // 오프셋 증가
+
+	// Camera CBV 생성
+	pAirplanePlayer->GetCamera()->CreateShaderVariables(m_pd3dDevice, m_pd3dCommandList, m_pd3dCbvSrvDescriptorHeap, nCbvSrvDescriptorOffset);
+	nCbvSrvDescriptorOffset += nCbvSrvDescriptorIncrementSize; // 오프셋 증가
+
+	// Scene에 포함된 모든 게임 객체들의 CBV를 생성합니다.
+	for (int i = 0; i < m_pScene->m_nGameObjects; i++)
+	{
+		m_pScene->m_ppGameObjects[i]->CreateShaderVariables(m_pd3dDevice, m_pd3dCommandList, m_pd3dCbvSrvDescriptorHeap, nCbvSrvDescriptorOffset);
+		nCbvSrvDescriptorOffset += nCbvSrvDescriptorIncrementSize; // 오프셋 증가
+	}
+
 	pAirplanePlayer->SetPosition(XMFLOAT3(0.0f, 0.0f, 0.0f));
 	m_pScene->m_pPlayer = m_pPlayer = pAirplanePlayer;
 	m_pCamera = m_pPlayer->GetCamera();
 
 	m_pd3dCommandList->Close();
-	ID3D12CommandList *ppd3dCommandLists[] = { m_pd3dCommandList };
+	ID3D12CommandList* ppd3dCommandLists[] = { m_pd3dCommandList };
 	m_pd3dCommandQueue->ExecuteCommandLists(1, ppd3dCommandLists);
 
 	WaitForGpuComplete();
@@ -513,6 +554,10 @@ void CGameFramework::FrameAdvance()
 
 	HRESULT hResult = m_pd3dCommandAllocator->Reset();
 	hResult = m_pd3dCommandList->Reset(m_pd3dCommandAllocator, NULL);
+
+	// 디스크립터 힙 설정
+	ID3D12DescriptorHeap* ppd3dDescriptorHeaps[] = { m_pd3dCbvSrvDescriptorHeap };
+	m_pd3dCommandList->SetDescriptorHeaps(_countof(ppd3dDescriptorHeaps), ppd3dDescriptorHeaps);
 
 	D3D12_RESOURCE_BARRIER d3dResourceBarrier;
 	::ZeroMemory(&d3dResourceBarrier, sizeof(D3D12_RESOURCE_BARRIER));

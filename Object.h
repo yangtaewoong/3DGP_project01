@@ -105,6 +105,11 @@ public:
 	static void CMaterial::PrepareShaders(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, ID3D12RootSignature *pd3dGraphicsRootSignature);
 };
 
+struct VS_CB_GAME_OBJECT_INFO
+{
+	XMFLOAT4X4 m_xmf4x4World;
+};
+
 class CGameObject
 {
 private:
@@ -152,8 +157,11 @@ public:
 	virtual void UpdateShaderVariables(ID3D12GraphicsCommandList *pd3dCommandList);
 	virtual void ReleaseShaderVariables();
 
-	virtual void UpdateShaderVariable(ID3D12GraphicsCommandList *pd3dCommandList, XMFLOAT4X4 *pxmf4x4World);
-	virtual void UpdateShaderVariable(ID3D12GraphicsCommandList *pd3dCommandList, CMaterial *pMaterial);
+	//virtual void UpdateShaderVariable(ID3D12GraphicsCommandList *pd3dCommandList, XMFLOAT4X4 *pxmf4x4World);
+	//virtual void UpdateShaderVariable(ID3D12GraphicsCommandList *pd3dCommandList, CMaterial *pMaterial);
+	
+	virtual void CreateShaderVariables(ID3D12Device* pd3dDevice, ID3D12GraphicsCommandList* pd3dCommandList, ID3D12DescriptorHeap* pd3dCbvSrvDescriptorHeap, UINT nDescriptorOffset);
+	//virtual void UpdateShaderVariable(ID3D12GraphicsCommandList* pd3dCommandList);
 
 	virtual void ReleaseUploadBuffers();
 
@@ -188,6 +196,12 @@ public:
 	static CGameObject *LoadGeometryFromFile(ID3D12Device *pd3dDevice, ID3D12GraphicsCommandList *pd3dCommandList, ID3D12RootSignature *pd3dGraphicsRootSignature, char *pstrFileName);
 
 	static void PrintFrameInfo(CGameObject *pGameObject, CGameObject *pParent);
+
+	ID3D12Resource* m_pd3dcbGameObject = NULL;
+	VS_CB_GAME_OBJECT_INFO* m_pcbMappedGameObject = NULL;
+	D3D12_GPU_DESCRIPTOR_HANDLE     m_d3dCbvGpuDescriptorHandle;
+
+	
 };
 
 class CRotatingObject : public CGameObject
